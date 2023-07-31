@@ -45,7 +45,6 @@ func main() {
 		args := edgeTTS.Args{
 			Text:       *text,
 			Voice:      *voice,
-			File:       *file,
 			Rate:       *rate,
 			Volume:     *volume,
 			WriteMedia: *writeMedia,

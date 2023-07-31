@@ -20,7 +20,6 @@ type EdgeTTS struct {
 type Args struct {
 	Text           string
 	Voice          string
-	File           string
 	Proxy          string
 	Rate           string
 	Volume         string
