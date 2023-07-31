@@ -27,7 +27,6 @@ type Args struct {
 	WordsInCue     float64
 	WriteMedia     string
 	WriteSubtitles string
-	ListVoices     bool
 }
 
 func isTerminal(file *os.File) bool {
