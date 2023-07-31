@@ -14,7 +14,7 @@ To install it, run the following command:
 
 If you want to use the `edge-tts-go` command, you can simply run it with the following command:
 
-    $ edge-tts-go --text "Hello, world!" --write-media hello.mp3 --write-subtitles hello.vtt
+    $ edge-tts-go --text "Hello, world!" --write-media hello.mp3
 
 ### Changing the voice
 
