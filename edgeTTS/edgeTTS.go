@@ -87,6 +87,21 @@ func NewTTS(args Args) *EdgeTTS {
 	}
 }
 
+func (eTTS *EdgeTTS) AddTextDefault(text string) *EdgeTTS {
+	eTTS.texts = append(eTTS.texts, CommunicateTextOption{
+		text: text,
+	})
+	return eTTS
+}
+
+func (eTTS *EdgeTTS) AddTextWithVoice(text string, voice string) *EdgeTTS {
+	eTTS.texts = append(eTTS.texts, CommunicateTextOption{
+		text:  text,
+		voice: voice,
+	})
+	return eTTS
+}
+
 func (eTTS *EdgeTTS) AddText(text string, voice string, rate string, volume string) *EdgeTTS {
 	eTTS.texts = append(eTTS.texts, CommunicateTextOption{
 		text:   text,
