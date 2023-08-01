@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 
@@ -73,6 +74,13 @@ func NewTTS(args Args) *EdgeTTS {
 		fmt.Fprintln(os.Stderr, "Warning: TTS output will be written to the terminal. Use --write-media to write to a file.")
 		fmt.Fprintln(os.Stderr, "Press Ctrl+C to cancel the operation. Press Enter to continue.")
 		fmt.Scanln()
+	}
+	if _, err := os.Stat(args.WriteMedia); os.IsNotExist(err) {
+		err := os.MkdirAll(filepath.Dir(args.WriteMedia), 0755)
+		if err != nil {
+			log.Fatalf("Failed to create dir: %v\n", err)
+			return nil
+		}
 	}
 	tts := NewCommunicate().WithVoice(args.Voice).WithRate(args.Rate).WithVolume(args.Volume)
 	file, err := os.OpenFile(args.WriteMedia, os.O_APPEND|os.O_CREATE|os.O_TRUNC, 0644)
