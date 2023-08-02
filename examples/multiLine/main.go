@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/surfaceyu/edge-tts-go/edgeTTS"
 )
@@ -52,12 +54,14 @@ func main() {
 		Voice:      "",
 		WriteMedia: "./sample.mp3",
 	}
+	start := time.Now()
 	tts := edgeTTS.NewTTS(args)
 	for _, v := range contents {
 		speaker, text := splitSpeaker(v)
 		tts.AddTextWithVoice(text, speaker)
 	}
 	tts.Speak()
+	fmt.Printf("程序运行时间: %s", time.Since(start))
 }
 
 var displayShortMap = map[string]string{

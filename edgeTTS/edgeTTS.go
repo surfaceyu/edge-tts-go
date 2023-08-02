@@ -14,7 +14,7 @@ import (
 
 type EdgeTTS struct {
 	communicator *Communicate
-	texts        []CommunicateTextOption
+	texts        []*CommunicateTextTask
 	outCome      io.WriteCloser
 }
 
@@ -92,68 +92,43 @@ func NewTTS(args Args) *EdgeTTS {
 	return &EdgeTTS{
 		communicator: tts,
 		outCome:      file,
-		texts:        []CommunicateTextOption{},
+		texts:        []*CommunicateTextTask{},
 	}
 }
 
-func (eTTS *EdgeTTS) option(text string, voice string, rate string, volume string) CommunicateTextOption {
-	// voiceToUse := voice
-	// if voice == "" {
-	// 	voiceToUse = eTTS.communicator.option.voice
-	// }
-	// rateToUse := rate
-	// if rate == "" {
-	// 	rateToUse = eTTS.communicator.option.rate
-	// }
-	// volumeToUse := volume
-	// if volume == "" {
-	// 	volumeToUse = eTTS.communicator.option.volume
-	// }
-	// return CommunicateTextOption{
-	// 	text:   text,
-	// 	voice:  voiceToUse,
-	// 	rate:   rateToUse,
-	// 	volume: volumeToUse,
-	// }
-	return CommunicateTextOption{
-		text:   text,
-		voice:  voice,
-		rate:   rate,
-		volume: volume,
+func (eTTS *EdgeTTS) task(text string, voice string, rate string, volume string) *CommunicateTextTask {
+	return &CommunicateTextTask{
+		text: text,
+		option: CommunicateTextOption{
+			voice:  voice,
+			rate:   rate,
+			volume: volume,
+		},
 	}
 }
 
 func (eTTS *EdgeTTS) AddTextDefault(text string) *EdgeTTS {
-	eTTS.texts = append(eTTS.texts, eTTS.option(text, "", "", ""))
+	eTTS.texts = append(eTTS.texts, eTTS.task(text, "", "", ""))
 	return eTTS
 }
 
 func (eTTS *EdgeTTS) AddTextWithVoice(text string, voice string) *EdgeTTS {
-	eTTS.texts = append(eTTS.texts, eTTS.option(text, voice, "", ""))
+	eTTS.texts = append(eTTS.texts, eTTS.task(text, voice, "", ""))
 	return eTTS
 }
 
 func (eTTS *EdgeTTS) AddText(text string, voice string, rate string, volume string) *EdgeTTS {
-	eTTS.texts = append(eTTS.texts, eTTS.option(text, voice, rate, volume))
+	eTTS.texts = append(eTTS.texts, eTTS.task(text, voice, rate, volume))
 	return eTTS
 }
 
 func (eTTS *EdgeTTS) Speak() {
-	defer eTTS.communicator.Close()
+	defer eTTS.communicator.close()
 	defer eTTS.outCome.Close()
 
+	go eTTS.communicator.allocateTask(eTTS.texts)
+	eTTS.communicator.createPool()
 	for _, text := range eTTS.texts {
-		task := eTTS.communicator.stream(text)
-		for {
-			v, ok := <-task
-			if ok {
-				if v.Type == ChunkTypeAudio {
-					eTTS.outCome.Write(v.Data)
-					// } else if v.Type == ChunkTypeWordBoundary {
-				} else if v.Type == ChunkTypeEnd {
-					break
-				}
-			}
-		}
+		eTTS.outCome.Write(text.speechData)
 	}
 }

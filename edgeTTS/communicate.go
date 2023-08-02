@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -15,6 +16,7 @@ import (
 type turnContext struct {
 	ServiceTag string `json:"serviceTag"`
 }
+
 type turnAudio struct {
 	Type     string `json:"type"`
 	StreamID string `json:"streamId"`
@@ -36,15 +38,18 @@ type turnMetaInnerText struct {
 	Length       int    `json:"Length"`
 	BoundaryType string `json:"BoundaryType"`
 }
+
 type turnMetaInnerData struct {
 	Offset   int               `json:"Offset"`
 	Duration int               `json:"Duration"`
 	Text     turnMetaInnerText `json:"text"`
 }
+
 type turnMetadata struct {
 	Type string            `json:"Type"`
 	Data turnMetaInnerData `json:"Data"`
 }
+
 type turnMeta struct {
 	Metadata []turnMetadata `json:"Metadata"`
 }
@@ -57,8 +62,16 @@ type communicateChunk struct {
 	Text     string
 }
 
-type CommunicateTextOption struct {
+type CommunicateTextTask struct {
+	id     int
 	text   string
+	option CommunicateTextOption
+
+	chunk      chan communicateChunk
+	speechData []byte
+}
+
+type CommunicateTextOption struct {
 	voice  string
 	rate   string
 	volume string
@@ -68,9 +81,8 @@ type Communicate struct {
 	option CommunicateTextOption
 	proxy  string
 
-	conn *websocket.Conn
-
-	chunk chan communicateChunk
+	processorLimit int
+	tasks          chan *CommunicateTextTask
 }
 
 func NewCommunicate() *Communicate {
@@ -80,7 +92,8 @@ func NewCommunicate() *Communicate {
 			rate:   "+0%",
 			volume: "+0%",
 		},
-		chunk: make(chan communicateChunk),
+		processorLimit: 16,
+		tasks:          make(chan *CommunicateTextTask, 16),
 	}
 }
 
@@ -103,14 +116,6 @@ func (c *Communicate) WithVoice(voice string) *Communicate {
 		}
 		c.option.voice = voice
 	}
-	return c
-}
-
-func (c *Communicate) WithText(text string) *Communicate {
-	if text == "" {
-		return c
-	}
-	c.option.text = text
 	return c
 }
 
@@ -164,28 +169,22 @@ func (c *Communicate) openWs() *websocket.Conn {
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
-	c.conn = conn
-	return c.conn
+	return conn
 }
 
-func (c *Communicate) turnEnd() {
-	c.chunk <- communicateChunk{
-		Type: ChunkTypeEnd,
-	}
+func (c *Communicate) close() {
+
 }
 
-func (c *Communicate) Close() {
-	defer c.conn.Close()
-}
-
-func (c *Communicate) stream(text CommunicateTextOption) chan communicateChunk {
+func (c *Communicate) stream(text *CommunicateTextTask) chan communicateChunk {
+	text.chunk = make(chan communicateChunk)
 	// texts := splitTextByByteLength(removeIncompatibleCharacters(c.text), calcMaxMsgSize(c.voice, c.rate, c.volume))
-	c.openWs()
+	conn := c.openWs()
 	date := dateToString()
-	c.fillOption(&text)
-	c.conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("X-Timestamp:%s\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":false,\"wordBoundaryEnabled\":true},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n", date)))
-	c.conn.WriteMessage(websocket.TextMessage, []byte(ssmlHeadersPlusData(uuidWithOutDashes(), date, mkssml(
-		text.text, text.voice, text.rate, text.volume,
+	c.fillOption(&text.option)
+	conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("X-Timestamp:%s\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":false,\"wordBoundaryEnabled\":true},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n", date)))
+	conn.WriteMessage(websocket.TextMessage, []byte(ssmlHeadersPlusData(uuidWithOutDashes(), date, mkssml(
+		text.text, text.option.voice, text.option.rate, text.option.volume,
 	))))
 
 	go func() {
@@ -202,7 +201,7 @@ func (c *Communicate) stream(text CommunicateTextOption) chan communicateChunk {
 		// finalUtterance := make(map[int]int)
 		for {
 			// 读取消息
-			messageType, data, err := c.conn.ReadMessage()
+			messageType, data, err := conn.ReadMessage()
 			if err != nil {
 				log.Println(err)
 				return
@@ -215,7 +214,9 @@ func (c *Communicate) stream(text CommunicateTextOption) chan communicateChunk {
 					downloadAudio = true
 				} else if path == "turn.end" {
 					downloadAudio = false
-					c.turnEnd()
+					text.chunk <- communicateChunk{
+						Type: ChunkTypeEnd,
+					}
 				} else if path == "audio.metadata" {
 					meta := &turnMeta{}
 					if err := json.Unmarshal(data, meta); err != nil {
@@ -223,7 +224,7 @@ func (c *Communicate) stream(text CommunicateTextOption) chan communicateChunk {
 					}
 					for _, v := range meta.Metadata {
 						if v.Type == ChunkTypeWordBoundary {
-							c.chunk <- communicateChunk{
+							text.chunk <- communicateChunk{
 								Type:     v.Type,
 								Offset:   v.Data.Offset,
 								Duration: v.Data.Duration,
@@ -249,7 +250,7 @@ func (c *Communicate) stream(text CommunicateTextOption) chan communicateChunk {
 				if len(data) < headerLength+2 {
 					log.Fatalf("We received a binary message, but it is missing the audio data.")
 				}
-				c.chunk <- communicateChunk{
+				text.chunk <- communicateChunk{
 					Type: ChunkTypeAudio,
 					Data: data[headerLength+2:],
 				}
@@ -258,7 +259,43 @@ func (c *Communicate) stream(text CommunicateTextOption) chan communicateChunk {
 		}
 	}()
 
-	return c.chunk
+	return text.chunk
+}
+
+func (c *Communicate) allocateTask(tasks []*CommunicateTextTask) {
+	for id, t := range tasks {
+		t.id = id
+		c.tasks <- t
+	}
+	close(c.tasks)
+}
+
+func (c *Communicate) process(wg *sync.WaitGroup) {
+	defer wg.Done()
+	for t := range c.tasks {
+		chunk := c.stream(t)
+		for {
+			v, ok := <-chunk
+			if ok {
+				if v.Type == ChunkTypeAudio {
+					t.speechData = append(t.speechData, v.Data...)
+					// } else if v.Type == ChunkTypeWordBoundary {
+				} else if v.Type == ChunkTypeEnd {
+					close(t.chunk)
+					break
+				}
+			}
+		}
+	}
+}
+
+func (c *Communicate) createPool() {
+	var wg sync.WaitGroup
+	for i := 0; i < c.processorLimit; i++ {
+		wg.Add(1)
+		go c.process(&wg)
+	}
+	wg.Wait()
 }
 
 func isValidVoice(voice string) bool {
