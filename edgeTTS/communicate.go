@@ -138,6 +138,18 @@ func (c *Communicate) WithProxy(proxy string) *Communicate {
 	return c
 }
 
+func (c *Communicate) fillOption(text *CommunicateTextOption) {
+	if text.voice == "" {
+		text.voice = c.option.voice
+	}
+	if text.rate == "" {
+		text.rate = c.option.rate
+	}
+	if text.volume == "" {
+		text.volume = c.option.volume
+	}
+}
+
 func (c *Communicate) openWs() *websocket.Conn {
 	headers := http.Header{}
 	headers.Add("Pragma", "no-cache")
@@ -166,14 +178,14 @@ func (c *Communicate) Close() {
 	defer c.conn.Close()
 }
 
-func (c *Communicate) stream() chan communicateChunk {
+func (c *Communicate) stream(text CommunicateTextOption) chan communicateChunk {
 	// texts := splitTextByByteLength(removeIncompatibleCharacters(c.text), calcMaxMsgSize(c.voice, c.rate, c.volume))
-	conn := c.openWs()
+	c.openWs()
 	date := dateToString()
-	conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("X-Timestamp:%s\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":false,\"wordBoundaryEnabled\":true},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n", date)))
-
-	conn.WriteMessage(websocket.TextMessage, []byte(ssmlHeadersPlusData(uuidWithOutDashes(), date, mkssml(
-		c.option.text, c.option.voice, c.option.rate, c.option.volume,
+	c.fillOption(&text)
+	c.conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("X-Timestamp:%s\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":false,\"wordBoundaryEnabled\":true},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n", date)))
+	c.conn.WriteMessage(websocket.TextMessage, []byte(ssmlHeadersPlusData(uuidWithOutDashes(), date, mkssml(
+		text.text, text.voice, text.rate, text.volume,
 	))))
 
 	go func() {
@@ -190,7 +202,7 @@ func (c *Communicate) stream() chan communicateChunk {
 		// finalUtterance := make(map[int]int)
 		for {
 			// 读取消息
-			messageType, data, err := conn.ReadMessage()
+			messageType, data, err := c.conn.ReadMessage()
 			if err != nil {
 				log.Println(err)
 				return

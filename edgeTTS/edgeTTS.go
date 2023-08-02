@@ -88,6 +88,7 @@ func NewTTS(args Args) *EdgeTTS {
 		log.Fatalf("Failed to open file: %v\n", err)
 		return nil
 	}
+	tts.openWs()
 	return &EdgeTTS{
 		communicator: tts,
 		outCome:      file,
@@ -95,28 +96,45 @@ func NewTTS(args Args) *EdgeTTS {
 	}
 }
 
-func (eTTS *EdgeTTS) AddTextDefault(text string) *EdgeTTS {
-	eTTS.texts = append(eTTS.texts, CommunicateTextOption{
-		text: text,
-	})
-	return eTTS
-}
-
-func (eTTS *EdgeTTS) AddTextWithVoice(text string, voice string) *EdgeTTS {
-	eTTS.texts = append(eTTS.texts, CommunicateTextOption{
-		text:  text,
-		voice: voice,
-	})
-	return eTTS
-}
-
-func (eTTS *EdgeTTS) AddText(text string, voice string, rate string, volume string) *EdgeTTS {
-	eTTS.texts = append(eTTS.texts, CommunicateTextOption{
+func (eTTS *EdgeTTS) option(text string, voice string, rate string, volume string) CommunicateTextOption {
+	// voiceToUse := voice
+	// if voice == "" {
+	// 	voiceToUse = eTTS.communicator.option.voice
+	// }
+	// rateToUse := rate
+	// if rate == "" {
+	// 	rateToUse = eTTS.communicator.option.rate
+	// }
+	// volumeToUse := volume
+	// if volume == "" {
+	// 	volumeToUse = eTTS.communicator.option.volume
+	// }
+	// return CommunicateTextOption{
+	// 	text:   text,
+	// 	voice:  voiceToUse,
+	// 	rate:   rateToUse,
+	// 	volume: volumeToUse,
+	// }
+	return CommunicateTextOption{
 		text:   text,
 		voice:  voice,
 		rate:   rate,
 		volume: volume,
-	})
+	}
+}
+
+func (eTTS *EdgeTTS) AddTextDefault(text string) *EdgeTTS {
+	eTTS.texts = append(eTTS.texts, eTTS.option(text, "", "", ""))
+	return eTTS
+}
+
+func (eTTS *EdgeTTS) AddTextWithVoice(text string, voice string) *EdgeTTS {
+	eTTS.texts = append(eTTS.texts, eTTS.option(text, voice, "", ""))
+	return eTTS
+}
+
+func (eTTS *EdgeTTS) AddText(text string, voice string, rate string, volume string) *EdgeTTS {
+	eTTS.texts = append(eTTS.texts, eTTS.option(text, voice, rate, volume))
 	return eTTS
 }
 
@@ -125,7 +143,7 @@ func (eTTS *EdgeTTS) Speak() {
 	defer eTTS.outCome.Close()
 
 	for _, text := range eTTS.texts {
-		task := eTTS.communicator.WithText(text.text).WithVoice(text.voice).WithRate(text.rate).WithVolume(text.volume).stream()
+		task := eTTS.communicator.stream(text)
 		for {
 			v, ok := <-task
 			if ok {
