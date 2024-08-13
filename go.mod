@@ -1,4 +1,4 @@
-module github.com/surfaceyu/edge-tts-go
+module github.com/baohuiming/edge-tts-go
 
 go 1.20
 
