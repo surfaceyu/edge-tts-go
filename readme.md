@@ -6,7 +6,7 @@
 
 To install it, run the following command:
 
-    $ go install github.com/surfaceyu/edge-tts-go
+    $ go install github.com/baohuiming/edge-tts-go
 
 ## Usage
 
