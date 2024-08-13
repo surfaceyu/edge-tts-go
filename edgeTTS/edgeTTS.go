@@ -83,7 +83,7 @@ func NewTTS(args Args) *EdgeTTS {
 		}
 	}
 	tts := NewCommunicate().WithVoice(args.Voice).WithRate(args.Rate).WithVolume(args.Volume)
-	file, err := os.OpenFile(args.WriteMedia, os.O_APPEND|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(args.WriteMedia, os.O_WRONLY|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0644)
 	if err != nil {
 		log.Fatalf("Failed to open file: %v\n", err)
 		return nil
@@ -128,7 +128,9 @@ func (eTTS *EdgeTTS) Speak() {
 
 	go eTTS.communicator.allocateTask(eTTS.texts)
 	eTTS.communicator.createPool()
-	for _, text := range eTTS.texts {
-		eTTS.outCome.Write(text.speechData)
+		_, err := eTTS.outCome.Write(text.speechData)
+		if err != nil {
+			log.Fatalln("Failed to write to file:", err)
+		}
 	}
 }
