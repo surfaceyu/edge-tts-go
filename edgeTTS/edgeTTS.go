@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"sort"
 
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 type EdgeTTS struct {
@@ -30,7 +30,7 @@ type Args struct {
 }
 
 func isTerminal(file *os.File) bool {
-	return terminal.IsTerminal(int(file.Fd()))
+	return term.IsTerminal(int(file.Fd()))
 }
 
 func PrintVoices(locale string) {
@@ -73,7 +73,7 @@ func NewTTS(args Args) *EdgeTTS {
 	if isTerminal(os.Stdin) && isTerminal(os.Stdout) && args.WriteMedia == "" {
 		fmt.Fprintln(os.Stderr, "Warning: TTS output will be written to the terminal. Use --write-media to write to a file.")
 		fmt.Fprintln(os.Stderr, "Press Ctrl+C to cancel the operation. Press Enter to continue.")
-		fmt.Scanln()
+		_, _ = fmt.Scanln()
 	}
 	if _, err := os.Stat(args.WriteMedia); os.IsNotExist(err) {
 		err := os.MkdirAll(filepath.Dir(args.WriteMedia), 0755)
@@ -83,7 +83,7 @@ func NewTTS(args Args) *EdgeTTS {
 		}
 	}
 	tts := NewCommunicate().WithVoice(args.Voice).WithRate(args.Rate).WithVolume(args.Volume)
-	file, err := os.OpenFile(args.WriteMedia, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
+	file, err := os.OpenFile(args.WriteMedia, os.O_WRONLY|os.O_APPEND|os.O_TRUNC|os.O_CREATE, os.ModePerm)
 	if err != nil {
 		log.Fatalf("Failed to open file: %v\n", err)
 		return nil
@@ -129,6 +129,8 @@ func (eTTS *EdgeTTS) Speak() {
 	go eTTS.communicator.allocateTask(eTTS.texts)
 	eTTS.communicator.createPool()
 	for _, text := range eTTS.texts {
-		eTTS.outCome.Write(text.speechData)
+		if _, err := eTTS.outCome.Write(text.speechData); err != nil {
+			log.Fatalln("Failed to write to file:", err)
+		}
 	}
 }

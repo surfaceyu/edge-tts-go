@@ -33,7 +33,7 @@ func TestVoicesManager_find(t *testing.T) {
 		attributes Voice
 	}
 	vm := &VoicesManager{}
-	vm.create(nil)
+	_ = vm.create(nil)
 	tests := []struct {
 		name string
 		vm   *VoicesManager
