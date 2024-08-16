@@ -83,7 +83,7 @@ func NewTTS(args Args) *EdgeTTS {
 		}
 	}
 	tts := NewCommunicate().WithVoice(args.Voice).WithRate(args.Rate).WithVolume(args.Volume)
-	file, err := os.OpenFile(args.WriteMedia, os.O_APPEND|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(args.WriteMedia, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 	if err != nil {
 		log.Fatalf("Failed to open file: %v\n", err)
 		return nil
