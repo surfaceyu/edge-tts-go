@@ -1,7 +1,9 @@
 package edgeTTS
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,9 +11,24 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+// generateSecMSGEC builds the Sec-MS-GEC query token Microsoft requires for
+// the readaloud websocket. Algorithm (mirrors upstream edge-tts):
+// take the current Unix time, shift to the Windows file-time epoch, round
+// down to the nearest 5 minutes, convert to 100-ns ticks, concatenate with
+// TRUSTED_CLIENT_TOKEN and SHA-256 it.
+func generateSecMSGEC() string {
+	ticks := time.Now().UTC().Unix() + 11644473600
+	ticks -= ticks % 300
+	// "%d0000000" multiplies by 1e7 via string concat to avoid int64 overflow concerns.
+	str := fmt.Sprintf("%d0000000%s", ticks, TRUSTED_CLIENT_TOKEN)
+	h := sha256.Sum256([]byte(str))
+	return strings.ToUpper(hex.EncodeToString(h[:]))
+}
 
 type turnContext struct {
 	ServiceTag string `json:"serviceTag"`
@@ -160,12 +177,16 @@ func (c *Communicate) openWs() *websocket.Conn {
 	headers.Add("Pragma", "no-cache")
 	headers.Add("Cache-Control", "no-cache")
 	headers.Add("Origin", "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold")
-	headers.Add("Accept-Encoding", "gzip, deflate, br")
+	headers.Add("Accept-Encoding", "gzip, deflate, br, zstd")
 	headers.Add("Accept-Language", "en-US,en;q=0.9")
-	headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Safari/537.36 Edg/91.0.864.41")
+	headers.Add("User-Agent", fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s.0.0.0 Safari/537.36 Edg/%s.0.0.0", CHROMIUM_MAJOR_VERSION, CHROMIUM_MAJOR_VERSION))
 
+	url := fmt.Sprintf(
+		"%s&ConnectionId=%s&Sec-MS-GEC=%s&Sec-MS-GEC-Version=%s",
+		WSS_URL, uuidWithOutDashes(), generateSecMSGEC(), SEC_MS_GEC_VERSION,
+	)
 	dialer := websocket.Dialer{}
-	conn, _, err := dialer.Dial(fmt.Sprintf("%s&ConnectionId=%s", WSS_URL, uuidWithOutDashes()), headers)
+	conn, _, err := dialer.Dial(url, headers)
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
